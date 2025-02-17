@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Video Call UI</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #333;
+        }
+        .mobile-container {
+            width: 375px; /* Typical mobile width */
+            height: 667px; /* Typical mobile height */
+            background-color: white;
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+        .video-container {
+            flex: 2;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            min-height: 40%;
+        }
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .controls {
+            position: absolute;
+            bottom: 10px;
+            display: flex;
+            gap: 15px;
+        }
+        .control-button {
+            background-color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid #ccc;
+            overflow: hidden;
+        }
+        #chatLog {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            max-height: 200px;
+            min-height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="mobile-container">
+        <div class="video-container">
+            <video id="videoElement" autoplay muted></video>
+            <div class="controls">
+                <button id="audioToggle" class="control-button">
+                    <i class="material-icons">mic</i>
+                </button>
+                <button id="videoToggle" class="control-button">
+                    <i class="material-icons">videocam</i>
+                </button>
+            </div>
+        </div>
+        <div class="chat-container">
+            <div id="chatLog"></div>
+        </div>
+    </div>
+    <canvas id="canvasElement" style="display: none;"></canvas>
+
+    <script>
+        const URL = "ws://localhost:9080";
+        const video = document.getElementById("videoElement");
+        const canvas = document.getElementById("canvasElement");
+        const context = canvas.getContext("2d");
+        const audioToggle = document.getElementById('audioToggle');
+        const videoToggle = document.getElementById('videoToggle');
+        const chatLog = document.getElementById('chatLog');
+        let stream = null;
+        let currentFrameB64;
+        let webSocket = null;
+        let audioContext = null;
+        let mediaRecorder = null;
+        let processor = null;
+        let pcmData = [];
+        let interval = null;
+        let initialized = false;
+        let audioInputContext;
+        let workletNode;
+        let isAudioOn = false;
+        let isVideoOn = true;
+
+        async function startWebcam() {
+            try {
+                const constraints = {
+                    video: {
+                        width: { max: 640 },
+                        height: { max: 480 },
+                    },
+                    audio: true
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                isVideoOn = true;
+                updateVideoToggleButton();
+            } catch (err) {
+                console.error("Error accessing the webcam: ", err);
+            }
+        }
+
+        function captureImage() {
+            if (stream && isVideoOn) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL("image/jpeg").split(",")[1].trim();
+                currentFrameB64 = imageData;
+            }
+        }
+
+        window.addEventListener("load", async () => {
+            await startWebcam();
+            setInterval(captureImage, 3000);
+            connect();
+        });
+
+        function connect() {
+            console.log("connecting: ", URL);
+
+            webSocket = new WebSocket(URL);
+
+            webSocket.onclose = (event) => {
+                console.log("websocket closed: ", event);
+                alert("Connection closed");
+            };
+
+            webSocket.onerror = (event) => {
+                console.log("websocket error: ", event);
+            };
+
+            webSocket.onmessage = receiveMessage;
+        }
+
+        function sendVoiceMessage(b64PCM) {
+            if (webSocket == null) {
+                console.log("websocket not initialized");
+                return;
+            }
+
+            const payload = {
+                realtime_input: {
+                    media_chunks: [{
+                            mime_type: "audio/pcm",
+                            data: b64PCM,
+                        },
+                        {
+                            mime_type: "image/jpeg",
+                            data: currentFrameB64,
+                        },
+                    ],
+                },
+            };
+
+            webSocket.send(JSON.stringify(payload));
+            console.log("sent: ", payload);
+        }
+        
+        // function displayMessage(message) {
+        //     const messageElement = document.createElement('div');
+        //     messageElement.textContent = message;
+        //     chatLog.appendChild(messageElement);
+        //     chatLog.scrollTop = chatLog.scrollHeight; // Scroll to bottom
+        // }
+
+        // function sendTextMessage() {
+        //     const text = textInput.value.trim();
+        //     if (text === "") return;
+
+        //     if (webSocket == null) {
+        //         console.log("websocket not initialized");
+        //         return;
+        //     }
+
+        //     const payload = {
+        //         realtime_input: {
+        //             text_input: text
+        //         },
+        //     };
+
+        //     webSocket.send(JSON.stringify(payload));
+        //     console.log("sent text: ", text);
+        //     displayMessage("You: " + text);
+        //     textInput.value = ""; // Clear input field
+        // }
+
+        function receiveMessage(event) {
+            const messageData = JSON.parse(event.data);
+            const response = new Response(messageData);
+
+            if (response.text) {
+                let formattedText = response.text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                displayMessage("GEMINI: " + formattedText);
+            }
+            if (response.audioData) {
+                injestAudioChuckToPlay(response.audioData);
+            }
+        }
+
+        async function initializeAudioContext() {
+            if (initialized) return;
+
+            audioInputContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+            await audioInputContext.audioWorklet.addModule("pcm-processor.js");
+            workletNode = new AudioWorkletNode(audioInputContext, "pcm-processor");
+            workletNode.connect(audioInputContext.destination);
+            initialized = true;
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function convertPCM16LEToFloat32(pcmData) {
+            const inputArray = new Int16Array(pcmData);
+            const float32Array = new Float32Array(inputArray.length);
+
+            for (let i = 0; i < inputArray.length; i++) {
+                float32Array[i] = inputArray[i] / 32768;
+            }
+
+            return float32Array;
+        }
+
+        async function injestAudioChuckToPlay(base64AudioChunk) {
+            try {
+                if (!initialized) {
+                    await initializeAudioContext();
+                }
+
+                if (audioInputContext.state === "suspended") {
+                    await audioInputContext.resume();
+                }
+                const arrayBuffer = base64ToArrayBuffer(base64AudioChunk);
+                const float32Data = convertPCM16LEToFloat32(arrayBuffer);
+
+                workletNode.port.postMessage(float32Data);
+            } catch (error) {
+                console.error("Error processing audio chunk:", error);
+            }
+        }
+
+        function recordChunk() {
+            const buffer = new ArrayBuffer(pcmData.length * 2);
+            const view = new DataView(buffer);
+            pcmData.forEach((value, index) => {
+                view.setInt16(index * 2, value, true);
+            });
+
+            const base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+
+            sendVoiceMessage(base64);
+            pcmData = [];
+        }
+
+        async function startAudioInput() {
+            audioContext = new AudioContext({
+                sampleRate: 16000,
+            });
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    sampleRate: 16000,
+                },
+            });
+
+            const source = audioContext.createMediaStreamSource(stream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (e) => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcm16 = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcm16[i] = inputData[i] * 0x7fff;
+                }
+                pcmData.push(...pcm16);
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+
+            interval = setInterval(recordChunk, 3000);
+            isAudioOn = true;
+            updateAudioToggleButton();
+        }
+
+        function stopAudioInput() {
+            if(processor) {
+                processor.disconnect();
+            }
+            if(audioContext) {
+                audioContext.close();
+            }
+
+            clearInterval(interval);
+            isAudioOn = false;
+            updateAudioToggleButton();
+        }
+
+        function displayMessage(message) {
+            console.log(message);
+            const newParagraph = document.createElement("p");
+            newParagraph.innerHTML = message;
+            chatLog.appendChild(newParagraph);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function toggleAudio() {
+            if (isAudioOn) {
+                stopAudioInput();
+            } else {
+                startAudioInput();
+            }
+        }
+
+        function toggleVideo() {
+            if (isVideoOn) {
+                video.srcObject.getVideoTracks().forEach(track => track.enabled = false);
+                isVideoOn = false;
+            } else {
+                video.srcObject.getVideoTracks().forEach(track => track.enabled = true);
+                isVideoOn = true;
+            }
+            updateVideoToggleButton();
+        }
+
+        function updateAudioToggleButton() {
+            audioToggle.innerHTML = `<i class="material-icons">${isAudioOn ? 'mic' : 'mic_off'}</i>`;
+        }
+
+        function updateVideoToggleButton() {
+            videoToggle.innerHTML = `<i class="material-icons">${isVideoOn ? 'videocam' : 'videocam_off'}</i>`;
+        }
+
+        audioToggle.addEventListener('click', toggleAudio);
+        videoToggle.addEventListener('click', toggleVideo);
+
+        class Response {
+            constructor(data) {
+                this.text = null;
+                this.audioData = null;
+                this.endOfTurn = null;
+
+                if(data.text){
+                    this.text = data.text
+                }
+
+                if (data.audio) {
+                    this.audioData = data.audio;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
