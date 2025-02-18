@@ -135,8 +135,8 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
 
 
 async def main() -> None:
-    async with websockets.serve(gemini_session_handler, "localhost", 9080):
-        print("Running websocket server localhost:9080...")
+    async with websockets.serve(gemini_session_handler, "0.0.0.0", 9080):
+        print("Running websocket server 0.0.0.0:9080...")
         await asyncio.Future()  # Keep the server running indefinitely
 
 
