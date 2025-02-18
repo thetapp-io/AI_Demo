@@ -127,9 +127,15 @@
                 };
 
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+                // Mute audio tracks initially
+                stream.getAudioTracks().forEach(track => track.enabled = false);
+
                 video.srcObject = stream;
                 isVideoOn = true;
+                isAudioOn = false; // Ensure the audio state is updated correctly
                 updateVideoToggleButton();
+                updateAudioToggleButton();
             } catch (err) {
                 console.error("Error accessing the webcam: ", err);
             }
@@ -191,34 +197,6 @@
             webSocket.send(JSON.stringify(payload));
             console.log("sent: ", payload);
         }
-        
-        // function displayMessage(message) {
-        //     const messageElement = document.createElement('div');
-        //     messageElement.textContent = message;
-        //     chatLog.appendChild(messageElement);
-        //     chatLog.scrollTop = chatLog.scrollHeight; // Scroll to bottom
-        // }
-
-        // function sendTextMessage() {
-        //     const text = textInput.value.trim();
-        //     if (text === "") return;
-
-        //     if (webSocket == null) {
-        //         console.log("websocket not initialized");
-        //         return;
-        //     }
-
-        //     const payload = {
-        //         realtime_input: {
-        //             text_input: text
-        //         },
-        //     };
-
-        //     webSocket.send(JSON.stringify(payload));
-        //     console.log("sent text: ", text);
-        //     displayMessage("You: " + text);
-        //     textInput.value = ""; // Clear input field
-        // }
 
         function receiveMessage(event) {
             const messageData = JSON.parse(event.data);
@@ -395,3 +373,32 @@
     </script>
 </body>
 </html>
+
+
+<!-- // function displayMessage(message) {
+    //     const messageElement = document.createElement('div');
+    //     messageElement.textContent = message;
+    //     chatLog.appendChild(messageElement);
+    //     chatLog.scrollTop = chatLog.scrollHeight; // Scroll to bottom
+    // }
+
+    // function sendTextMessage() {
+    //     const text = textInput.value.trim();
+    //     if (text === "") return;
+
+    //     if (webSocket == null) {
+    //         console.log("websocket not initialized");
+    //         return;
+    //     }
+
+    //     const payload = {
+    //         realtime_input: {
+    //             text_input: text
+    //         },
+    //     };
+
+    //     webSocket.send(JSON.stringify(payload));
+    //     console.log("sent text: ", text);
+    //     displayMessage("You: " + text);
+    //     textInput.value = ""; // Clear input field
+    // } -->
