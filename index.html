@@ -157,51 +157,21 @@
             connect();
         });
 
-        let pingInterval = 30000;  // Send a ping every 30 seconds
-
         function connect() {
-            console.log("Connecting to WebSocket:", URL);
+            console.log("connecting: ", URL);
 
-            try {
-                webSocket = new WebSocket(URL);
+            webSocket = new WebSocket(URL);
 
-                webSocket.onopen = () => {
-                    console.log("WebSocket connected.");
-                    startPinging();  // Start sending pings to keep the connection alive
-                };
+            webSocket.onclose = (event) => {
+                console.log("websocket closed: ", event);
+                alert("Connection closed");
+            };
 
-                webSocket.onmessage = receiveMessage;
+            webSocket.onerror = (event) => {
+                console.log("websocket error: ", event);
+            };
 
-                webSocket.onclose = (event) => {
-                    console.log("WebSocket closed:", event);
-                    alert("Connection lost. Reconnecting...");
-                    reconnectWebSocket();  // Attempt to reconnect
-                };
-
-                webSocket.onerror = (event) => {
-                    console.log("WebSocket error:", event);
-                    reconnectWebSocket();  // Attempt to reconnect
-                };
-            } catch (error) {
-                console.log("WebSocket failed, reconnecting...");
-                reconnectWebSocket();  // Attempt to reconnect
-            }
-        }
-
-        function startPinging() {
-            setInterval(() => {
-                if (webSocket.readyState === WebSocket.OPEN) {
-                    webSocket.send(JSON.stringify({ type: 'ping' }));  // Send a ping message
-                    console.log("Ping sent.");
-                }
-            }, pingInterval);  // Send ping every 30 seconds
-        }
-
-        function reconnectWebSocket() {
-            setTimeout(() => {
-                console.log("Reconnecting WebSocket...");
-                connect();  // Try to reconnect
-            }, 3000);
+            webSocket.onmessage = receiveMessage;
         }
 
         function sendVoiceMessage(b64PCM) {
